@@ -2,10 +2,12 @@ import { useRef, useState } from 'react';
 import usePlannerStore from '../../store/usePlannerStore';
 import { exportToJson, importFromJson } from '../../utils/importExport';
 import SettingsModal from '../settings/SettingsModal';
+import GenerateStructureModal from '../structure/GenerateStructureModal';
 
 export default function Toolbar() {
   const { projectName, setProjectName, initProject, importProject, exportProject } = usePlannerStore();
   const [showSettings, setShowSettings] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
   const [importError, setImportError] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -56,6 +58,10 @@ export default function Toolbar() {
           placeholder="Project name"
           title="Project name"
         />
+
+        <button onClick={() => setShowGenerate(true)} className="text-xs px-3 py-1.5 rounded-md border border-green-300 bg-green-50 hover:bg-green-100 text-green-600 font-medium flex items-center gap-1">
+          Generate
+        </button>
 
         <div className="flex-1" />
 
@@ -117,6 +123,13 @@ export default function Toolbar() {
       )}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showGenerate && (
+        <GenerateStructureModal
+          isOpen={showGenerate}
+          onClose={() => setShowGenerate(false)}
+          projectName={projectName}
+        />
+      )}
     </>
   );
 }

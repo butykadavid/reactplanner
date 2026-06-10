@@ -10,13 +10,30 @@ const TABS = [
   { id: 'states', label: 'States' },
 ];
 
-export default function Sidebar({ selectedComponentId, onSelectComponent }) {
+export default function Sidebar({
+  selectedComponentId,
+  onSelectComponent,
+  visibleComponentIds,
+  showFilters,
+  onShowFiltersChange,
+  applyGroupFilter,
+  onApplyGroupFilterChange,
+  groupFilterId,
+  onGroupFilterIdChange,
+  applyStateFilter,
+  onApplyStateFilterChange,
+  stateFilterId,
+  onStateFilterIdChange,
+  applySubtreeFilter,
+  onApplySubtreeFilterChange,
+  subtreeFilterRootId,
+  onSubtreeFilterRootIdChange,
+}) {
   const [activeTab, setActiveTab] = useState('components');
   const [selectedStateId, setSelectedStateId] = useState(null);
-  const components = usePlannerStore((s) => s.components);
   const states = usePlannerStore((s) => s.states);
   const hasSelectedComponent = selectedComponentId
-    ? components.some((comp) => comp.id === selectedComponentId)
+    ? visibleComponentIds.has(selectedComponentId)
     : false;
   const hasSelectedState = selectedStateId
     ? states.some((stateItem) => stateItem.id === selectedStateId)
@@ -64,6 +81,21 @@ export default function Sidebar({ selectedComponentId, onSelectComponent }) {
               <ComponentList
                 selectedComponentId={visibleSelectedComponentId}
                 onSelectComponent={onSelectComponent}
+                visibleComponentIds={visibleComponentIds}
+                showFilters={showFilters}
+                onShowFiltersChange={onShowFiltersChange}
+                applyGroupFilter={applyGroupFilter}
+                onApplyGroupFilterChange={onApplyGroupFilterChange}
+                groupFilterId={groupFilterId}
+                onGroupFilterIdChange={onGroupFilterIdChange}
+                applyStateFilter={applyStateFilter}
+                onApplyStateFilterChange={onApplyStateFilterChange}
+                stateFilterId={stateFilterId}
+                onStateFilterIdChange={onStateFilterIdChange}
+                applySubtreeFilter={applySubtreeFilter}
+                onApplySubtreeFilterChange={onApplySubtreeFilterChange}
+                subtreeFilterRootId={subtreeFilterRootId}
+                onSubtreeFilterRootIdChange={onSubtreeFilterRootIdChange}
               />
             </div>
 

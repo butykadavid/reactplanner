@@ -3,7 +3,7 @@ import usePlannerStore from '../../store/usePlannerStore';
 import { classifyAllStates, SCOPE, SCOPE_COLORS, SCOPE_LABELS } from '../../utils/scopeAnalyzer';
 import { getAncestors, getDepth, getDescendants } from '../../utils/treeHelpers';
 
-const TAG_COLOR_CLASSES = {
+const GROUP_COLOR_CLASSES = {
   sky: 'bg-sky-100 text-sky-700 border-sky-200',
   emerald: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   amber: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -37,17 +37,17 @@ export default function ComponentDetailsPanel({ componentId, onClose }) {
   const {
     components,
     decks,
-    tags,
+    groups,
     states,
     settings,
-    createTag,
-    assignTagToSubtree,
-    removeTagFromSubtree,
+    createGroup,
+    assignGroupToSubtree,
+    removeGroupFromSubtree,
     updateComponent,
     removeComponentFromDeck,
     deleteDeck,
   } = usePlannerStore();
-  const [tagDraft, setTagDraft] = useState('');
+  const [groupDraft, setGroupDraft] = useState('');
 
   const component = useMemo(
     () => components.find((c) => c.id === componentId) ?? null,
@@ -89,9 +89,9 @@ export default function ComponentDetailsPanel({ componentId, onClose }) {
     const ancestrySet = new Set([...ancestorIds, component.id]);
 
     const assignedStates = states.filter((st) => st.assignedTo.includes(component.id));
-    const assignedTagIds = component.tagIds ?? [];
-    const assignedTags = assignedTagIds
-      .map((tagId) => tags.find((tag) => tag.id === tagId) ?? null)
+    const assignedGroupIds = component.groupIds ?? [];
+    const assignedGroups = assignedGroupIds
+      .map((groupId) => groups.find((group) => group.id === groupId) ?? null)
       .filter(Boolean);
 
     const availableStates = states.filter((st) => {
@@ -123,26 +123,26 @@ export default function ComponentDetailsPanel({ componentId, onClose }) {
       assignedStates,
       availableStates,
       assignableStates,
-      assignedTags,
-      assignedTagIds,
+      assignedGroups,
+      assignedGroupIds,
     };
-  }, [component, components, byId, decks, states, classifications, tags]);
+  }, [component, components, byId, decks, states, classifications, groups]);
 
-  function handleCreateAndApplyTag() {
+  function handleCreateAndApplyGroup() {
     if (!component) return;
-    const newTagId = createTag(tagDraft);
-    if (!newTagId) return;
-    assignTagToSubtree(component.id, newTagId);
-    setTagDraft('');
+    const newGroupId = createGroup(groupDraft);
+    if (!newGroupId) return;
+    assignGroupToSubtree(component.id, newGroupId);
+    setGroupDraft('');
   }
 
-  function handleToggleTag(tagId) {
+  function handleToggleGroup(groupId) {
     if (!component) return;
-    if (details?.assignedTagIds?.includes(tagId)) {
-      removeTagFromSubtree(component.id, tagId);
+    if (details?.assignedGroupIds?.includes(groupId)) {
+      removeGroupFromSubtree(component.id, groupId);
       return;
     }
-    assignTagToSubtree(component.id, tagId);
+    assignGroupToSubtree(component.id, groupId);
   }
 
   if (!component || !details) {
@@ -211,50 +211,50 @@ export default function ComponentDetailsPanel({ componentId, onClose }) {
         </section>
 
         <section>
-          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Tags</p>
+          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Groups</p>
           <p className="text-[10px] text-gray-400 mb-1">
-            Tagging this component applies the tag to its full subtree.
+            Assigning this component to a group applies the group to its full subtree.
           </p>
           <div className="rounded-md border border-gray-200 bg-white px-2 py-2 space-y-2">
             <div className="flex gap-1 w-full">
               <input
-                value={tagDraft}
-                onChange={(e) => setTagDraft(e.target.value)}
+                value={groupDraft}
+                onChange={(e) => setGroupDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    handleCreateAndApplyTag();
+                    handleCreateAndApplyGroup();
                   }
                 }}
                 className="w-3/4 flex-1 text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-400"
-                placeholder="Create or reuse tag"
+                placeholder="Create or reuse group"
               />
               <button
                 type="button"
-                onClick={handleCreateAndApplyTag}
+                onClick={handleCreateAndApplyGroup}
                 className="w-1/4 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded px-2 py-1"
               >
                 Add
               </button>
             </div>
 
-            {tags.length === 0 ? (
-              <p className="text-xs text-gray-400">No tags yet.</p>
+            {groups.length === 0 ? (
+              <p className="text-xs text-gray-400">No groups yet.</p>
             ) : (
               <div className="flex flex-wrap gap-1">
-                {tags.map((tag) => {
-                  const isAssigned = details.assignedTagIds.includes(tag.id);
-                  const colorClass = TAG_COLOR_CLASSES[tag.color] ?? TAG_COLOR_CLASSES.sky;
+                {groups.map((group) => {
+                  const isAssigned = details.assignedGroupIds.includes(group.id);
+                  const colorClass = GROUP_COLOR_CLASSES[group.color] ?? GROUP_COLOR_CLASSES.sky;
 
                   return (
                     <button
-                      key={tag.id}
+                      key={group.id}
                       type="button"
-                      onClick={() => handleToggleTag(tag.id)}
+                      onClick={() => handleToggleGroup(group.id)}
                       className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${colorClass} ${isAssigned ? '' : 'opacity-50 hover:opacity-100'}`}
                       title={isAssigned ? 'Remove from subtree' : 'Apply to subtree'}
                     >
-                      {tag.name}
+                      {group.name}
                     </button>
                   );
                 })}
@@ -262,7 +262,7 @@ export default function ComponentDetailsPanel({ componentId, onClose }) {
             )}
 
             <div className="text-[10px] text-gray-500">
-              Applied on this component: {details.assignedTags.length}
+              Applied on this component: {details.assignedGroups.length}
             </div>
           </div>
         </section>

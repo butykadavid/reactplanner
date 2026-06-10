@@ -53,7 +53,6 @@ function TreeNode({
     <li>
       <div
         className={`flex items-center gap-1 pr-2 py-1 rounded-md cursor-pointer group hover:bg-gray-100
-          ${wrapperDeck ? 'border border-amber-200 bg-amber-50/70' : ''}
           ${editingId === node.id || isSelected ? 'bg-gray-100' : ''}`}
         style={{ paddingLeft: `${depth * 8 + 4}px` }}
         onClick={() => onSelectComponent(node.id)}
@@ -82,7 +81,7 @@ function TreeNode({
         </button>
 
         <span className={`w-2 h-2 rounded-full flex-shrink-0
-          ${node.type === 'page' ? 'bg-indigo-400' : 'bg-gray-400'}`}
+          ${node.type === 'page' ? 'bg-indigo-400' : (wrapperDeck ? 'bg-amber-400' : 'bg-gray-400')}`}
         />
 
         <span className="text-sm text-gray-700 flex-1 truncate">{node.name}</span>
@@ -174,8 +173,26 @@ function TreeNode({
   );
 }
 
-export default function ComponentList({ selectedComponentId, onSelectComponent }) {
-  const { components, decks, addComponent, deleteComponent, createDeck } = usePlannerStore();
+export default function ComponentList({
+  selectedComponentId,
+  onSelectComponent,
+  visibleComponentIds,
+  showFilters,
+  onShowFiltersChange,
+  applyGroupFilter,
+  onApplyGroupFilterChange,
+  groupFilterId,
+  onGroupFilterIdChange,
+  applyStateFilter,
+  onApplyStateFilterChange,
+  stateFilterId,
+  onStateFilterIdChange,
+  applySubtreeFilter,
+  onApplySubtreeFilterChange,
+  subtreeFilterRootId,
+  onSubtreeFilterRootIdChange,
+}) {
+  const { components, decks, groups, states, addComponent, deleteComponent, createDeck } = usePlannerStore();
   const [editingId, setEditingId] = useState(null);
   const [collapsed, setCollapsed] = useState(new Set());
   const [search, setSearch] = useState('');
@@ -184,7 +201,11 @@ export default function ComponentList({ selectedComponentId, onSelectComponent }
   const [deckName, setDeckName] = useState('');
   const [deckType, setDeckType] = useState('component');
 
-  const roots = buildTree(components);
+  const visibleComponents = useMemo(
+    () => components.filter((component) => visibleComponentIds.has(component.id)),
+    [components, visibleComponentIds],
+  );
+  const roots = buildTree(visibleComponents);
   const filteredRoots = useMemo(() => filterTree(roots, search), [roots, search]);
   const rootId = components.find((c) => c.parentId === null)?.id;
   const deckById = useMemo(
@@ -291,13 +312,99 @@ export default function ComponentList({ selectedComponentId, onSelectComponent }
         </div>
       </div>
 
-      <div className="mb-2">
+      <div className="mb-2 space-y-2">
         <input
           className="w-full text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-400"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search components..."
         />
+
+        <div className="p-2 rounded-md border border-gray-200 bg-gray-50 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block">Filter</label>
+            <button
+              type="button"
+              onClick={() => onShowFiltersChange(!showFilters)}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+            >
+              {showFilters ? 'Hide' : 'Show'}
+            </button>
+          </div>
+
+          {showFilters ? (
+            <>
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={applyGroupFilter}
+                  onChange={(e) => onApplyGroupFilterChange(e.target.checked)}
+                />
+                Group
+              </label>
+              {applyGroupFilter ? (
+                <select
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-400 bg-white"
+                  value={groupFilterId}
+                  onChange={(e) => onGroupFilterIdChange(e.target.value)}
+                >
+                  <option value="">Select group</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={applyStateFilter}
+                  onChange={(e) => onApplyStateFilterChange(e.target.checked)}
+                />
+                State can-consume subtree
+              </label>
+              {applyStateFilter ? (
+                <select
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-400 bg-white"
+                  value={stateFilterId}
+                  onChange={(e) => onStateFilterIdChange(e.target.value)}
+                >
+                  <option value="">Select state</option>
+                  {states.map((state) => (
+                    <option key={state.id} value={state.id}>
+                      {state.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={applySubtreeFilter}
+                  onChange={(e) => onApplySubtreeFilterChange(e.target.checked)}
+                />
+                Selected component subtree
+              </label>
+              {applySubtreeFilter ? (
+                <select
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-400 bg-white"
+                  value={subtreeFilterRootId}
+                  onChange={(e) => onSubtreeFilterRootIdChange(e.target.value)}
+                >
+                  <option value="">Select root component</option>
+                  {components.map((component) => (
+                    <option key={component.id} value={component.id}>
+                      {component.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
 
       {creatingDeck ? (

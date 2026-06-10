@@ -4,7 +4,7 @@ import { getDescendants } from '../utils/treeHelpers';
 
 const ROOT_ID = 'root-app';
 const VALID_COMPONENT_TYPES = new Set(['component', 'page']);
-const TAG_COLOR_PALETTE = ['sky', 'emerald', 'amber', 'rose', 'violet', 'cyan', 'lime'];
+const GROUP_COLOR_PALETTE = ['sky', 'emerald', 'amber', 'rose', 'violet', 'cyan', 'lime'];
 
 function makeAppRoot() {
     return {
@@ -16,7 +16,7 @@ function makeAppRoot() {
         position: { x: 200, y: 150 },
         size: { width: 220, height: 80 },
         deckId: null,
-        tagIds: [],
+        groupIds: [],
     };
 }
 
@@ -26,16 +26,18 @@ function buildByIdMap(items) {
 
 function normalizeComponent(input = {}) {
     const type = VALID_COMPONENT_TYPES.has(input.type) ? input.type : 'component';
-    const tagIds = Array.isArray(input.tagIds)
-        ? Array.from(new Set(input.tagIds.filter(Boolean)))
-        : [];
+    const groupIds = Array.isArray(input.groupIds)
+        ? Array.from(new Set(input.groupIds.filter(Boolean)))
+        : Array.isArray(input.tagIds)
+            ? Array.from(new Set(input.tagIds.filter(Boolean)))
+            : [];
 
     return {
         ...input,
         type,
         description: typeof input.description === 'string' ? input.description : '',
         deckId: input.deckId ?? null,
-        tagIds,
+        groupIds,
     };
 }
 
@@ -55,9 +57,9 @@ function normalizeState(input = {}) {
     };
 }
 
-function normalizeTag(input = {}) {
-    const name = input.name?.trim() || 'New Tag';
-    const color = TAG_COLOR_PALETTE.includes(input.color) ? input.color : 'sky';
+function normalizeGroup(input = {}) {
+    const name = input.name?.trim() || 'New Group';
+    const color = GROUP_COLOR_PALETTE.includes(input.color) ? input.color : 'sky';
 
     return {
         id: input.id ?? uuidv4(),
@@ -66,17 +68,17 @@ function normalizeTag(input = {}) {
     };
 }
 
-function getTagColor(existingTags = []) {
-    const usageCount = TAG_COLOR_PALETTE.reduce((acc, color) => ({ ...acc, [color]: 0 }), {});
-    existingTags.forEach((tag) => {
-        if (usageCount[tag.color] !== undefined) {
-            usageCount[tag.color] += 1;
+function getGroupColor(existingGroups = []) {
+    const usageCount = GROUP_COLOR_PALETTE.reduce((acc, color) => ({ ...acc, [color]: 0 }), {});
+    existingGroups.forEach((group) => {
+        if (usageCount[group.color] !== undefined) {
+            usageCount[group.color] += 1;
         }
     });
 
-    return TAG_COLOR_PALETTE.reduce((best, current) =>
+    return GROUP_COLOR_PALETTE.reduce((best, current) =>
         usageCount[current] < usageCount[best] ? current : best,
-    TAG_COLOR_PALETTE[0]);
+        GROUP_COLOR_PALETTE[0]);
 }
 
 function getSubtreeIds(rootId, components) {
@@ -289,7 +291,7 @@ const usePlannerStore = create((set, get) => ({
     projectName: 'My React App',
     components: [makeAppRoot()],
     decks: [],
-    tags: [],
+    groups: [],
     states: [],
     settings: normalizeScopeSettings(),
 
@@ -483,53 +485,53 @@ const usePlannerStore = create((set, get) => ({
             };
         }),
 
-    // ── Tags ─────────────────────────────────────────────────────────────────
-    createTag: (name) => {
+    // ── Groups ───────────────────────────────────────────────────────────────
+    createGroup: (name) => {
         const trimmed = name?.trim();
         if (!trimmed) return null;
 
-        const { tags } = get();
-        const existing = tags.find((tag) => tag.name.toLowerCase() === trimmed.toLowerCase());
+        const { groups } = get();
+        const existing = groups.find((group) => group.name.toLowerCase() === trimmed.toLowerCase());
         if (existing) return existing.id;
 
-        const tag = normalizeTag({
+        const group = normalizeGroup({
             name: trimmed,
-            color: getTagColor(tags),
+            color: getGroupColor(groups),
         });
 
-        set((s) => ({ tags: [...s.tags, tag] }));
-        return tag.id;
+        set((s) => ({ groups: [...s.groups, group] }));
+        return group.id;
     },
 
-    deleteTag: (tagId) =>
+    deleteGroup: (groupId) =>
         set((s) => ({
-            tags: s.tags.filter((tag) => tag.id !== tagId),
+            groups: s.groups.filter((group) => group.id !== groupId),
             components: s.components.map((component) => ({
                 ...component,
-                tagIds: (component.tagIds ?? []).filter((id) => id !== tagId),
+                groupIds: (component.groupIds ?? []).filter((id) => id !== groupId),
             })),
         })),
 
-    assignTagToSubtree: (componentId, tagId) =>
+    assignGroupToSubtree: (componentId, groupId) =>
         set((s) => {
-            if (!componentId || !tagId) return {};
+            if (!componentId || !groupId) return {};
             const subtreeIds = new Set(getSubtreeIds(componentId, s.components));
 
             return {
                 components: s.components.map((component) => {
                     if (!subtreeIds.has(component.id)) return component;
-                    const nextTagIds = Array.from(new Set([...(component.tagIds ?? []), tagId]));
+                    const nextGroupIds = Array.from(new Set([...(component.groupIds ?? []), groupId]));
                     return {
                         ...component,
-                        tagIds: nextTagIds,
+                        groupIds: nextGroupIds,
                     };
                 }),
             };
         }),
 
-    removeTagFromSubtree: (componentId, tagId) =>
+    removeGroupFromSubtree: (componentId, groupId) =>
         set((s) => {
-            if (!componentId || !tagId) return {};
+            if (!componentId || !groupId) return {};
             const subtreeIds = new Set(getSubtreeIds(componentId, s.components));
 
             return {
@@ -537,7 +539,7 @@ const usePlannerStore = create((set, get) => ({
                     if (!subtreeIds.has(component.id)) return component;
                     return {
                         ...component,
-                        tagIds: (component.tagIds ?? []).filter((id) => id !== tagId),
+                        groupIds: (component.groupIds ?? []).filter((id) => id !== groupId),
                     };
                 }),
             };
@@ -566,7 +568,7 @@ const usePlannerStore = create((set, get) => ({
 
     // ── Settings ──────────────────────────────────────────────────────────────
     updateSettings: (patch) =>
-        set((s) => ({ settings: normalizeScopeSettings({...s.settings, ...patch }) })),
+        set((s) => ({ settings: normalizeScopeSettings({ ...s.settings, ...patch }) })),
 
     // ── Project lifecycle ─────────────────────────────────────────────────────
     initProject: (name = 'My React App') =>
@@ -574,35 +576,46 @@ const usePlannerStore = create((set, get) => ({
             projectName: name,
             components: [makeAppRoot()],
             decks: [],
-            tags: [],
+            groups: [],
             states: [],
             settings: normalizeScopeSettings(),
         }),
 
     importProject: (json) => {
-        const { projectName, components, decks, tags, states, settings } = json;
+        const { projectName, components, decks, groups, tags, states, settings } = json;
         const sanitized = sanitizeDeckStructure(components ?? [makeAppRoot()], decks ?? []);
-        const normalizedTags = Array.isArray(tags)
-            ? tags.map((tag) => normalizeTag(tag))
-            : [];
-        const validTagIds = new Set(normalizedTags.map((tag) => tag.id));
+        const sourceGroups = Array.isArray(groups)
+            ? groups
+            : (Array.isArray(tags) ? tags : []);
+        const normalizedGroups = sourceGroups
+            .map((group) => normalizeGroup(group));
+        const validGroupIds = new Set(normalizedGroups.map((group) => group.id));
         set({
             projectName: projectName ?? 'Imported Project',
-            components: sanitized.components.map((component) => normalizeComponent({
-                ...component,
-                tagIds: (component.tagIds ?? []).filter((tagId) => validTagIds.has(tagId)),
-            })),
+            components: sanitized.components.map((component) => {
+                const normalized = normalizeComponent(component);
+                return {
+                    ...normalized,
+                    groupIds: (normalized.groupIds ?? []).filter((groupId) => validGroupIds.has(groupId)),
+                };
+            }),
             decks: sanitized.decks,
-            tags: normalizedTags,
+            groups: normalizedGroups,
             states: Array.isArray(states) ? states.map((state) => normalizeState(state)) : [],
             settings: normalizeScopeSettings(settings ?? {}),
         });
     },
 
     exportProject: () => {
-        const { projectName, components, decks, tags, states, settings } = get();
-        return { projectName, components, decks, tags, states, settings };
+        const { projectName, components, decks, groups, states, settings } = get();
+        return { projectName, components, decks, groups, states, settings };
     },
+
+    // Backwards compatibility aliases
+    createTag: (name) => get().createGroup(name),
+    deleteTag: (tagId) => get().deleteGroup(tagId),
+    assignTagToSubtree: (componentId, tagId) => get().assignGroupToSubtree(componentId, tagId),
+    removeTagFromSubtree: (componentId, tagId) => get().removeGroupFromSubtree(componentId, tagId),
 }));
 
 export default usePlannerStore;
