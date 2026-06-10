@@ -38,7 +38,6 @@ function TreeNode({
   rootId,
   selectedComponentId,
   onSelectComponent,
-  deckById,
   wrapperDeckById,
   onAddChild,
 }) {
@@ -46,7 +45,6 @@ function TreeNode({
   const isCollapsed = collapsed.has(node.id);
   const isRoot = node.id === rootId;
   const isSelected = selectedComponentId === node.id;
-  const memberDeck = node.deckId ? deckById[node.deckId] ?? null : null;
   const wrapperDeck = wrapperDeckById[node.id] ?? null;
 
   return (
@@ -162,7 +160,6 @@ function TreeNode({
               rootId={rootId}
               selectedComponentId={selectedComponentId}
               onSelectComponent={onSelectComponent}
-              deckById={deckById}
               wrapperDeckById={wrapperDeckById}
               onAddChild={onAddChild}
             />
@@ -208,10 +205,6 @@ export default function ComponentList({
   const roots = buildTree(visibleComponents);
   const filteredRoots = useMemo(() => filterTree(roots, search), [roots, search]);
   const rootId = components.find((c) => c.parentId === null)?.id;
-  const deckById = useMemo(
-    () => Object.fromEntries(decks.map((deck) => [deck.id, deck])),
-    [decks],
-  );
 
   const wrapperDeckById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.wrapperId, deck])),
@@ -472,7 +465,6 @@ export default function ComponentList({
               rootId={rootId}
               selectedComponentId={selectedComponentId}
               onSelectComponent={onSelectComponent}
-              deckById={deckById}
               wrapperDeckById={wrapperDeckById}
               onAddChild={handleAddChild}
             />

@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { getDescendants } from '../utils/treeHelpers';
+import {
+    createProjectDocument,
+    deleteProjectDocument,
+    withFirestoreSave,
+} from '../utils/firestoreSync';
 
 const ROOT_ID = 'root-app';
 const VALID_COMPONENT_TYPES = new Set(['component', 'page']);
@@ -287,335 +292,473 @@ function normalizeScopeSettings(input = {}) {
     };
 }
 
-const usePlannerStore = create((set, get) => ({
-    projectName: 'My React App',
-    components: [makeAppRoot()],
-    decks: [],
-    groups: [],
-    states: [],
-    settings: normalizeScopeSettings(),
-
-    setProjectName: (name) => set({ projectName: name }),
-
-    // ── Components ────────────────────────────────────────────────────────────
-    addComponent: (partial) => {
-        const { components, decks } = get();
-        const comp = {
-            id: uuidv4(),
-            type: 'component',
-            name: 'NewComponent',
-            parentId: null,
-            position: { x: 100, y: 100 },
-            size: { width: 220, height: 80 },
-            deckId: null,
-            ...partial,
-        };
-
-        const normalizedComp = normalizeComponent(comp);
-        const deck = normalizedComp.deckId ? getDeckById(decks, normalizedComp.deckId) : null;
-
-        if (normalizedComp.deckId && (!deck || deck.memberType !== normalizedComp.type)) {
-            return null;
-        }
-
-        const nextComp = deck
-            ? normalizeComponent({
-                ...normalizedComp,
-                parentId: deck.wrapperId,
-            })
-            : normalizedComp;
-
-        const sanitized = sanitizeDeckStructure([...components, nextComp], decks);
-        set({ components: sanitized.components, decks: sanitized.decks });
-        return comp.id;
-    },
-
-    updateComponent: (id, patch) =>
-        set((s) => {
-            const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, id, patch);
-            if (!nextState.changed) {
-                return {};
-            }
-
-            const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
-
+const usePlannerStore = create((set, get) => {
+    const withAutoSave = (action) => withFirestoreSave(action, {
+        getAuthContext: () => {
+            const state = get();
             return {
-                components: sanitized.components,
-                decks: sanitized.decks,
+                userId: state.userId,
+                activeProjectId: state.activeProjectId,
+                projectName: state.projectName,
             };
-        }),
+        },
+        getProjectSnapshot: () => get().getProjectSnapshot(),
+        onSaveError: (error) => {
+            const message = error?.message ?? 'Unable to save project changes.';
+            set({ syncError: message });
+        },
+    });
 
-    deleteComponent: (id) => {
-        const { components, decks, states } = get();
+    const store = {
+        userId: null,
+        activeProjectId: null,
+        syncError: null,
 
-        const wrapperDeck = decks.find((deck) => deck.wrapperId === id);
-        if (wrapperDeck) {
-            const removed = removeDeckFromState(components, decks, wrapperDeck.id);
-            if (!removed.changed) return;
+        projectName: 'My React App',
+        components: [makeAppRoot()],
+        decks: [],
+        groups: [],
+        states: [],
+        settings: normalizeScopeSettings(),
 
-            set({
-                components: removed.components,
-                decks: removed.decks,
-                states,
-            });
-            return;
-        }
-
-        // Collect ids of node + all descendants
-        const toDelete = new Set();
-        const collect = (nodeId) => {
-            toDelete.add(nodeId);
-            components.filter((c) => c.parentId === nodeId).forEach((c) => collect(c.id));
-        };
-        collect(id);
-
-        const sanitized = sanitizeDeckStructure(
-            components.filter((c) => !toDelete.has(c.id)),
-            decks,
-        );
-
-        set({
-            components: sanitized.components,
-            decks: sanitized.decks,
-            states: states.map((s) => ({
-                ...s,
-                assignedTo: s.assignedTo.filter((cid) => !toDelete.has(cid)),
-            })),
-        });
-    },
-
-    setParent: (nodeId, newParentId) =>
-        set((s) => {
-            const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, nodeId, { parentId: newParentId });
-            if (!nextState.changed) {
-                return {};
-            }
-
-            const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
-            return {
-                components: sanitized.components,
-                decks: sanitized.decks,
-            };
-        }),
-
-    createDeck: ({ name, memberType = 'component', parentId = ROOT_ID }) => {
-        const deckName = name?.trim();
-        if (!deckName || !VALID_COMPONENT_TYPES.has(memberType)) {
-            return null;
-        }
-
-        const { components, decks } = get();
-        const deckId = uuidv4();
-        const wrapperParentId = getDefaultWrapperParentId(components, parentId);
-        const wrapper = makeDeckWrapper({
-            deckId,
-            deckName,
-            parentId: wrapperParentId,
-        });
-        const deck = normalizeDeck({
-            id: deckId,
-            name: deckName,
-            memberType,
-            wrapperId: wrapper.id,
-        });
-
-        const sanitized = sanitizeDeckStructure([...components, wrapper], [...decks, deck]);
-        set({
-            components: sanitized.components,
-            decks: sanitized.decks,
-        });
-
-        return {
-            deckId,
-            wrapperId: wrapper.id,
-        };
-    },
-
-    updateDeck: (id, patch) =>
-        set((s) => ({
-            decks: s.decks.map((deck) => {
-                if (deck.id !== id) return deck;
-                return normalizeDeck({
-                    ...deck,
-                    ...patch,
-                    id: deck.id,
-                    wrapperId: deck.wrapperId,
-                });
-            }),
+        setUserId: (userId) => set((state) => ({
+            userId,
+            activeProjectId: userId ? state.activeProjectId : null,
         })),
 
-    deleteDeck: (id) =>
-        set((s) => {
-            const removed = removeDeckFromState(s.components, s.decks, id);
-            if (!removed.changed) {
-                return {};
+        setActiveProjectId: (projectId) => set({ activeProjectId: projectId ?? null }),
+
+        setSyncError: (syncError) => set({ syncError }),
+
+        clearSyncError: () => set({ syncError: null }),
+
+        setProjectName: (name) => set({ projectName: name }),
+
+        // ── Components ────────────────────────────────────────────────────────────
+        addComponent: (partial) => {
+            const { components, decks } = get();
+            const comp = {
+                id: uuidv4(),
+                type: 'component',
+                name: 'NewComponent',
+                parentId: null,
+                position: { x: 100, y: 100 },
+                size: { width: 220, height: 80 },
+                deckId: null,
+                ...partial,
+            };
+
+            const normalizedComp = normalizeComponent(comp);
+            const deck = normalizedComp.deckId ? getDeckById(decks, normalizedComp.deckId) : null;
+
+            if (normalizedComp.deckId && (!deck || deck.memberType !== normalizedComp.type)) {
+                return null;
             }
 
-            return {
-                components: removed.components,
-                decks: removed.decks,
-            };
-        }),
+            const nextComp = deck
+                ? normalizeComponent({
+                    ...normalizedComp,
+                    parentId: deck.wrapperId,
+                })
+                : normalizedComp;
 
-    assignComponentToDeck: (componentId, deckId) =>
-        set((s) => {
-            const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, componentId, { deckId });
-            if (!nextState.changed) {
-                return {};
-            }
+            const sanitized = sanitizeDeckStructure([...components, nextComp], decks);
+            set({ components: sanitized.components, decks: sanitized.decks });
+            return comp.id;
+        },
 
-            const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
-            return {
-                components: sanitized.components,
-                decks: sanitized.decks,
-            };
-        }),
+        updateComponent: (id, patch) =>
+            set((s) => {
+                const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, id, patch);
+                if (!nextState.changed) {
+                    return {};
+                }
 
-    removeComponentFromDeck: (componentId) =>
-        set((s) => {
-            const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, componentId, { deckId: null });
-            if (!nextState.changed) {
-                return {};
-            }
+                const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
 
-            const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
-            return {
-                components: sanitized.components,
-                decks: sanitized.decks,
-            };
-        }),
-
-    // ── Groups ───────────────────────────────────────────────────────────────
-    createGroup: (name) => {
-        const trimmed = name?.trim();
-        if (!trimmed) return null;
-
-        const { groups } = get();
-        const existing = groups.find((group) => group.name.toLowerCase() === trimmed.toLowerCase());
-        if (existing) return existing.id;
-
-        const group = normalizeGroup({
-            name: trimmed,
-            color: getGroupColor(groups),
-        });
-
-        set((s) => ({ groups: [...s.groups, group] }));
-        return group.id;
-    },
-
-    deleteGroup: (groupId) =>
-        set((s) => ({
-            groups: s.groups.filter((group) => group.id !== groupId),
-            components: s.components.map((component) => ({
-                ...component,
-                groupIds: (component.groupIds ?? []).filter((id) => id !== groupId),
-            })),
-        })),
-
-    assignGroupToSubtree: (componentId, groupId) =>
-        set((s) => {
-            if (!componentId || !groupId) return {};
-            const subtreeIds = new Set(getSubtreeIds(componentId, s.components));
-
-            return {
-                components: s.components.map((component) => {
-                    if (!subtreeIds.has(component.id)) return component;
-                    const nextGroupIds = Array.from(new Set([...(component.groupIds ?? []), groupId]));
-                    return {
-                        ...component,
-                        groupIds: nextGroupIds,
-                    };
-                }),
-            };
-        }),
-
-    removeGroupFromSubtree: (componentId, groupId) =>
-        set((s) => {
-            if (!componentId || !groupId) return {};
-            const subtreeIds = new Set(getSubtreeIds(componentId, s.components));
-
-            return {
-                components: s.components.map((component) => {
-                    if (!subtreeIds.has(component.id)) return component;
-                    return {
-                        ...component,
-                        groupIds: (component.groupIds ?? []).filter((id) => id !== groupId),
-                    };
-                }),
-            };
-        }),
-
-    // ── States ────────────────────────────────────────────────────────────────
-    addState: (partial) => {
-        const state = normalizeState({
-            name: 'newState',
-            valueType: 'any',
-            description: '',
-            assignedTo: [],
-            ...partial,
-        });
-        set((s) => ({ states: [...s.states, state] }));
-        return state.id;
-    },
-
-    updateState: (id, patch) =>
-        set((s) => ({
-            states: s.states.map((st) => (st.id === id ? normalizeState({ ...st, ...patch, id: st.id }) : st)),
-        })),
-
-    deleteState: (id) =>
-        set((s) => ({ states: s.states.filter((st) => st.id !== id) })),
-
-    // ── Settings ──────────────────────────────────────────────────────────────
-    updateSettings: (patch) =>
-        set((s) => ({ settings: normalizeScopeSettings({ ...s.settings, ...patch }) })),
-
-    // ── Project lifecycle ─────────────────────────────────────────────────────
-    initProject: (name = 'My React App') =>
-        set({
-            projectName: name,
-            components: [makeAppRoot()],
-            decks: [],
-            groups: [],
-            states: [],
-            settings: normalizeScopeSettings(),
-        }),
-
-    importProject: (json) => {
-        const { projectName, components, decks, groups, tags, states, settings } = json;
-        const sanitized = sanitizeDeckStructure(components ?? [makeAppRoot()], decks ?? []);
-        const sourceGroups = Array.isArray(groups)
-            ? groups
-            : (Array.isArray(tags) ? tags : []);
-        const normalizedGroups = sourceGroups
-            .map((group) => normalizeGroup(group));
-        const validGroupIds = new Set(normalizedGroups.map((group) => group.id));
-        set({
-            projectName: projectName ?? 'Imported Project',
-            components: sanitized.components.map((component) => {
-                const normalized = normalizeComponent(component);
                 return {
-                    ...normalized,
-                    groupIds: (normalized.groupIds ?? []).filter((groupId) => validGroupIds.has(groupId)),
+                    components: sanitized.components,
+                    decks: sanitized.decks,
                 };
             }),
-            decks: sanitized.decks,
-            groups: normalizedGroups,
-            states: Array.isArray(states) ? states.map((state) => normalizeState(state)) : [],
-            settings: normalizeScopeSettings(settings ?? {}),
-        });
-    },
 
-    exportProject: () => {
-        const { projectName, components, decks, groups, states, settings } = get();
-        return { projectName, components, decks, groups, states, settings };
-    },
+        deleteComponent: (id) => {
+            const { components, decks, states } = get();
 
-    // Backwards compatibility aliases
-    createTag: (name) => get().createGroup(name),
-    deleteTag: (tagId) => get().deleteGroup(tagId),
-    assignTagToSubtree: (componentId, tagId) => get().assignGroupToSubtree(componentId, tagId),
-    removeTagFromSubtree: (componentId, tagId) => get().removeGroupFromSubtree(componentId, tagId),
-}));
+            const wrapperDeck = decks.find((deck) => deck.wrapperId === id);
+            if (wrapperDeck) {
+                const removed = removeDeckFromState(components, decks, wrapperDeck.id);
+                if (!removed.changed) return;
+
+                set({
+                    components: removed.components,
+                    decks: removed.decks,
+                    states,
+                });
+                return;
+            }
+
+            // Collect ids of node + all descendants
+            const toDelete = new Set();
+            const collect = (nodeId) => {
+                toDelete.add(nodeId);
+                components.filter((c) => c.parentId === nodeId).forEach((c) => collect(c.id));
+            };
+            collect(id);
+
+            const sanitized = sanitizeDeckStructure(
+                components.filter((c) => !toDelete.has(c.id)),
+                decks,
+            );
+
+            set({
+                components: sanitized.components,
+                decks: sanitized.decks,
+                states: states.map((s) => ({
+                    ...s,
+                    assignedTo: s.assignedTo.filter((cid) => !toDelete.has(cid)),
+                })),
+            });
+        },
+
+        setParent: (nodeId, newParentId) =>
+            set((s) => {
+                const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, nodeId, { parentId: newParentId });
+                if (!nextState.changed) {
+                    return {};
+                }
+
+                const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
+                return {
+                    components: sanitized.components,
+                    decks: sanitized.decks,
+                };
+            }),
+
+        createDeck: ({ name, memberType = 'component', parentId = ROOT_ID }) => {
+            const deckName = name?.trim();
+            if (!deckName || !VALID_COMPONENT_TYPES.has(memberType)) {
+                return null;
+            }
+
+            const { components, decks } = get();
+            const deckId = uuidv4();
+            const wrapperParentId = getDefaultWrapperParentId(components, parentId);
+            const wrapper = makeDeckWrapper({
+                deckId,
+                deckName,
+                parentId: wrapperParentId,
+            });
+            const deck = normalizeDeck({
+                id: deckId,
+                name: deckName,
+                memberType,
+                wrapperId: wrapper.id,
+            });
+
+            const sanitized = sanitizeDeckStructure([...components, wrapper], [...decks, deck]);
+            set({
+                components: sanitized.components,
+                decks: sanitized.decks,
+            });
+
+            return {
+                deckId,
+                wrapperId: wrapper.id,
+            };
+        },
+
+        updateDeck: (id, patch) =>
+            set((s) => ({
+                decks: s.decks.map((deck) => {
+                    if (deck.id !== id) return deck;
+                    return normalizeDeck({
+                        ...deck,
+                        ...patch,
+                        id: deck.id,
+                        wrapperId: deck.wrapperId,
+                    });
+                }),
+            })),
+
+        deleteDeck: (id) =>
+            set((s) => {
+                const removed = removeDeckFromState(s.components, s.decks, id);
+                if (!removed.changed) {
+                    return {};
+                }
+
+                return {
+                    components: removed.components,
+                    decks: removed.decks,
+                };
+            }),
+
+        assignComponentToDeck: (componentId, deckId) =>
+            set((s) => {
+                const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, componentId, { deckId });
+                if (!nextState.changed) {
+                    return {};
+                }
+
+                const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
+                return {
+                    components: sanitized.components,
+                    decks: sanitized.decks,
+                };
+            }),
+
+        removeComponentFromDeck: (componentId) =>
+            set((s) => {
+                const nextState = applyComponentPatchWithDeckRules(s.components, s.decks, componentId, { deckId: null });
+                if (!nextState.changed) {
+                    return {};
+                }
+
+                const sanitized = sanitizeDeckStructure(nextState.nextComponents, s.decks);
+                return {
+                    components: sanitized.components,
+                    decks: sanitized.decks,
+                };
+            }),
+
+        // ── Groups ───────────────────────────────────────────────────────────────
+        createGroup: (name) => {
+            const trimmed = name?.trim();
+            if (!trimmed) return null;
+
+            const { groups } = get();
+            const existing = groups.find((group) => group.name.toLowerCase() === trimmed.toLowerCase());
+            if (existing) return existing.id;
+
+            const group = normalizeGroup({
+                name: trimmed,
+                color: getGroupColor(groups),
+            });
+
+            set((s) => ({ groups: [...s.groups, group] }));
+            return group.id;
+        },
+
+        deleteGroup: (groupId) =>
+            set((s) => ({
+                groups: s.groups.filter((group) => group.id !== groupId),
+                components: s.components.map((component) => ({
+                    ...component,
+                    groupIds: (component.groupIds ?? []).filter((id) => id !== groupId),
+                })),
+            })),
+
+        assignGroupToSubtree: (componentId, groupId) =>
+            set((s) => {
+                if (!componentId || !groupId) return {};
+                const subtreeIds = new Set(getSubtreeIds(componentId, s.components));
+
+                return {
+                    components: s.components.map((component) => {
+                        if (!subtreeIds.has(component.id)) return component;
+                        const nextGroupIds = Array.from(new Set([...(component.groupIds ?? []), groupId]));
+                        return {
+                            ...component,
+                            groupIds: nextGroupIds,
+                        };
+                    }),
+                };
+            }),
+
+        removeGroupFromSubtree: (componentId, groupId) =>
+            set((s) => {
+                if (!componentId || !groupId) return {};
+                const subtreeIds = new Set(getSubtreeIds(componentId, s.components));
+
+                return {
+                    components: s.components.map((component) => {
+                        if (!subtreeIds.has(component.id)) return component;
+                        return {
+                            ...component,
+                            groupIds: (component.groupIds ?? []).filter((id) => id !== groupId),
+                        };
+                    }),
+                };
+            }),
+
+        // ── States ────────────────────────────────────────────────────────────────
+        addState: (partial) => {
+            const state = normalizeState({
+                name: 'newState',
+                valueType: 'any',
+                description: '',
+                assignedTo: [],
+                ...partial,
+            });
+            set((s) => ({ states: [...s.states, state] }));
+            return state.id;
+        },
+
+        updateState: (id, patch) =>
+            set((s) => ({
+                states: s.states.map((st) => (st.id === id ? normalizeState({ ...st, ...patch, id: st.id }) : st)),
+            })),
+
+        deleteState: (id) =>
+            set((s) => ({ states: s.states.filter((st) => st.id !== id) })),
+
+        // ── Settings ──────────────────────────────────────────────────────────────
+        updateSettings: (patch) =>
+            set((s) => ({ settings: normalizeScopeSettings({ ...s.settings, ...patch }) })),
+
+        // ── Project lifecycle ─────────────────────────────────────────────────────
+        initProject: (name = 'My React App') =>
+            set({
+                projectName: name,
+                components: [makeAppRoot()],
+                decks: [],
+                groups: [],
+                states: [],
+                settings: normalizeScopeSettings(),
+            }),
+
+        importProject: (json) => {
+            const { projectName, components, decks, groups, tags, states, settings } = json;
+            const sanitized = sanitizeDeckStructure(components ?? [makeAppRoot()], decks ?? []);
+            const sourceGroups = Array.isArray(groups)
+                ? groups
+                : (Array.isArray(tags) ? tags : []);
+            const normalizedGroups = sourceGroups
+                .map((group) => normalizeGroup(group));
+            const validGroupIds = new Set(normalizedGroups.map((group) => group.id));
+            set({
+                projectName: projectName ?? 'Imported Project',
+                components: sanitized.components.map((component) => {
+                    const normalized = normalizeComponent(component);
+                    return {
+                        ...normalized,
+                        groupIds: (normalized.groupIds ?? []).filter((groupId) => validGroupIds.has(groupId)),
+                    };
+                }),
+                decks: sanitized.decks,
+                groups: normalizedGroups,
+                states: Array.isArray(states) ? states.map((state) => normalizeState(state)) : [],
+                settings: normalizeScopeSettings(settings ?? {}),
+            });
+        },
+
+        exportProject: () => {
+            const { projectName, components, decks, groups, states, settings } = get();
+            return { projectName, components, decks, groups, states, settings };
+        },
+
+        getProjectSnapshot: () => {
+            const { components, decks, groups, states, settings } = get();
+            return {
+                components,
+                decks,
+                groups,
+                states,
+                settings,
+            };
+        },
+
+        loadProjectSnapshot: (project) => {
+            if (!project) return;
+
+            const source = project.data ?? project;
+            const sanitized = sanitizeDeckStructure(source.components ?? [makeAppRoot()], source.decks ?? []);
+            const sourceGroups = Array.isArray(source.groups)
+                ? source.groups
+                : (Array.isArray(source.tags) ? source.tags : []);
+            const normalizedGroups = sourceGroups.map((group) => normalizeGroup(group));
+            const validGroupIds = new Set(normalizedGroups.map((group) => group.id));
+
+            set((state) => ({
+                projectName: project.projectName ?? state.projectName,
+                components: sanitized.components.map((component) => {
+                    const normalized = normalizeComponent(component);
+                    return {
+                        ...normalized,
+                        groupIds: (normalized.groupIds ?? []).filter((groupId) => validGroupIds.has(groupId)),
+                    };
+                }),
+                decks: sanitized.decks,
+                groups: normalizedGroups,
+                states: Array.isArray(source.states) ? source.states.map((entry) => normalizeState(entry)) : [],
+                settings: normalizeScopeSettings(source.settings ?? {}),
+            }));
+        },
+
+        createProject: async (projectName = 'Untitled Project') => {
+            const { userId, getProjectSnapshot: getSnapshot } = get();
+            if (!userId) {
+                throw new Error('Cannot create project without a signed-in user.');
+            }
+
+            const snapshot = getSnapshot();
+            const projectId = await createProjectDocument({
+                userId,
+                projectName,
+                data: snapshot,
+            });
+
+            set({
+                activeProjectId: projectId,
+                projectName: projectName?.trim() || 'Untitled Project',
+                syncError: null,
+            });
+
+            return projectId;
+        },
+
+        deleteProject: async (projectId) => {
+            if (!projectId) return;
+
+            await deleteProjectDocument(projectId);
+
+            set((state) => {
+                if (state.activeProjectId !== projectId) {
+                    return {};
+                }
+
+                return {
+                    activeProjectId: null,
+                };
+            });
+        },
+
+        // Backwards compatibility aliases
+        createTag: (name) => get().createGroup(name),
+        deleteTag: (tagId) => get().deleteGroup(tagId),
+        assignTagToSubtree: (componentId, tagId) => get().assignGroupToSubtree(componentId, tagId),
+        removeTagFromSubtree: (componentId, tagId) => get().removeGroupFromSubtree(componentId, tagId),
+    };
+
+    const autoSaveActions = [
+        'setProjectName',
+        'addComponent',
+        'updateComponent',
+        'deleteComponent',
+        'setParent',
+        'createDeck',
+        'updateDeck',
+        'deleteDeck',
+        'assignComponentToDeck',
+        'removeComponentFromDeck',
+        'createGroup',
+        'deleteGroup',
+        'assignGroupToSubtree',
+        'removeGroupFromSubtree',
+        'addState',
+        'updateState',
+        'deleteState',
+        'updateSettings',
+        'initProject',
+        'importProject',
+    ];
+
+    autoSaveActions.forEach((key) => {
+        store[key] = withAutoSave(store[key]);
+    });
+
+    return store;
+});
 
 export default usePlannerStore;

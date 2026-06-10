@@ -2,10 +2,12 @@ import { useState } from 'react';
 import usePlannerStore from '../../store/usePlannerStore';
 import ComponentList from './ComponentList';
 import ComponentDetailsPanel from './ComponentDetailsPanel';
+import ProjectList from './ProjectList';
 import StateList from './StateList';
 import StateDetailsPanel from './StateDetailsPanel';
 
 const TABS = [
+  { id: 'projects', label: 'Projects' },
   { id: 'components', label: 'Components' },
   { id: 'states', label: 'States' },
 ];
@@ -29,8 +31,10 @@ export default function Sidebar({
   subtreeFilterRootId,
   onSubtreeFilterRootIdChange,
 }) {
-  const [activeTab, setActiveTab] = useState('components');
+  const [activeTab, setActiveTab] = useState('projects');
   const [selectedStateId, setSelectedStateId] = useState(null);
+  const activeProjectId = usePlannerStore((s) => s.activeProjectId);
+  const setActiveProjectId = usePlannerStore((s) => s.setActiveProjectId);
   const states = usePlannerStore((s) => s.states);
   const hasSelectedComponent = selectedComponentId
     ? visibleComponentIds.has(selectedComponentId)
@@ -46,6 +50,10 @@ export default function Sidebar({
   const sidebarWidthClass = (showComponentDetailsPane || showStateDetailsPane) ? 'w-[34rem]' : 'w-72';
 
   function handleTabChange(tabId) {
+    if ((tabId === 'components' || tabId === 'states') && !activeProjectId) {
+      return;
+    }
+
     setActiveTab(tabId);
     if (tabId !== 'components') {
       onSelectComponent(null);
@@ -53,6 +61,13 @@ export default function Sidebar({
     if (tabId !== 'states') {
       setSelectedStateId(null);
     }
+  }
+
+  function handleSelectProject(projectId) {
+    setActiveProjectId(projectId);
+    onSelectComponent(null);
+    setSelectedStateId(null);
+    setActiveTab('components');
   }
 
   return (
@@ -63,7 +78,8 @@ export default function Sidebar({
           <button
             key={tab.id}
             onClick={() => handleTabChange(tab.id)}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors
+            disabled={(tab.id === 'components' || tab.id === 'states') && !activeProjectId}
+            className={`flex-1 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50
               ${activeTab === tab.id
                 ? 'text-blue-600 border-b-2 border-blue-500 bg-white'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
@@ -75,7 +91,9 @@ export default function Sidebar({
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'components' ? (
+        {activeTab === 'projects' ? (
+          <ProjectList onSelectProject={handleSelectProject} />
+        ) : activeTab === 'components' ? (
           <div className="h-full flex">
             <div className={`overflow-y-auto p-3 ${showComponentDetailsPane ? 'w-72 border-r border-gray-100' : 'w-full'}`}>
               <ComponentList

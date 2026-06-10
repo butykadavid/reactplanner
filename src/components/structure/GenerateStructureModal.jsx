@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import usePlannerStore from '../../store/usePlannerStore';
-import { generateFolderStructure, structureToJSON, structureToText, structureToTerminalCommands } from '../../utils/generateProjectStructure';
+import { generateFolderStructure, structureToJSON, structureToText } from '../../utils/generateProjectStructure';
 
 export default function GenerateStructureModal({ isOpen, onClose, projectName }) {
     const { components, decks } = usePlannerStore();
@@ -164,8 +164,8 @@ export default function GenerateStructureModal({ isOpen, onClose, projectName })
                     {successMessage && (
                         <div
                             className={`text-sm p-2 rounded text-center font-medium ${successMessage.startsWith('✓')
-                                    ? 'bg-green-50 text-green-700 border border-green-200'
-                                    : 'bg-red-50 text-red-700 border border-red-200'
+                                ? 'bg-green-50 text-green-700 border border-green-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
                                 }`}
                         >
                             {successMessage}

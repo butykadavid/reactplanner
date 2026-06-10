@@ -1,4 +1,4 @@
-import { buildTree, getDescendants } from './treeHelpers';
+import { buildTree } from './treeHelpers';
 
 /**
  * Generate a recommended project folder structure based on component hierarchy.
@@ -12,7 +12,6 @@ export function generateFolderStructure(components, decks, options = {}) {
         namingConvention = 'as-is', // 'as-is' or 'kebab-case'
     } = options;
 
-    const deckById = Object.fromEntries(decks.map((d) => [d.id, d]));
     const wrapperDeckById = Object.fromEntries(decks.map((d) => [d.wrapperId, d]));
     const tree = buildTree(components);
 
@@ -150,7 +149,7 @@ function buildTreeNodeFromComponent(component) {
 /**
  * Generate a React component template JSX code.
  */
-export function generateComponentTemplate(componentName, type = 'component') {
+export function generateComponentTemplate(componentName) {
     const isPascalCase = /^[A-Z]/.test(componentName);
     const name = isPascalCase ? componentName : componentName.charAt(0).toUpperCase() + componentName.slice(1);
 

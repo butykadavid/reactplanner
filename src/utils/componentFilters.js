@@ -8,22 +8,6 @@ function collectSubtreeIds(rootId, components) {
     return new Set([rootId, ...getDescendants(rootId, components)]);
 }
 
-function expandSeedIdsToValidSubtrees(seedIds, components) {
-    const seedSet = new Set(seedIds);
-    if (seedSet.size === 0) return new Set();
-
-    const roots = components
-        .filter((component) => seedSet.has(component.id) && !seedSet.has(component.parentId))
-        .map((component) => component.id);
-
-    const visibleIds = new Set();
-    roots.forEach((rootId) => {
-        collectSubtreeIds(rootId, components).forEach((id) => visibleIds.add(id));
-    });
-
-    return visibleIds;
-}
-
 function collectAncestorChain(componentId, components) {
     const chain = new Set([componentId]);
     const componentById = Object.fromEntries(components.map((c) => [c.id, c]));
