@@ -31,7 +31,8 @@ export default function StateDetailsPanel({ stateId, onClose }) {
     }, [stateItem, components, settings]);
 
     const canEditScopeOverride = settings.enableStateScopeOverride ?? false;
-    const canOverrideForState = details?.classification?.recommendedScope !== SCOPE.LOCAL;
+    // const canOverrideForState = details?.classification?.recommendedScope !== SCOPE.LOCAL;
+    const canOverrideForState = true; // Allow override for all states for now, even local ones
 
     function handleScopeOverrideChange(nextValue) {
         if (!stateItem) return;

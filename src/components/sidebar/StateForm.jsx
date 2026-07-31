@@ -176,12 +176,28 @@ export default function StateForm({ stateItem, onClose }) {
       </div>
       <div>
         <label className="text-xs text-gray-500 block mb-1">Assign to components</label>
-        <input
-          className="w-full text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-400 mb-1"
-          value={componentSearch}
-          onChange={(e) => setComponentSearch(e.target.value)}
-          placeholder="Search components..."
-        />
+        <div className="flex items-center gap-1">
+          <input
+            className="w-4/5 text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-400 mb-1"
+            value={componentSearch}
+            onChange={(e) => setComponentSearch(e.target.value)}
+            placeholder="Search components..."
+          />
+          <div className="w-1/5 flex items-center justify-end gap-1">
+            <label className="text-xs text-gray-500 mr-1">All</label>
+            <input
+              className="rounded border-gray-300 text-blue-500"
+              type="checkbox"
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setAssignedTo(new Set(components.map((c) => c.id)));
+                } else {
+                  setAssignedTo(new Set());
+                }
+              }}
+            />
+          </div>
+        </div>
         <div className="max-h-36 overflow-y-auto space-y-1">
           {filteredComponentTree.length === 0 ? (
             <p className="text-xs text-gray-400 italic text-center py-2">No matching components.</p>

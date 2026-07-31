@@ -113,7 +113,7 @@ export default function App() {
         <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
           <Toolbar />
           <OfflineIndicator />
-          <div className="absolute right-4 top-4 z-20 flex items-center gap-3 rounded-md bg-white/90 px-3 py-1.5 shadow-sm">
+          <div className="absolute right-4 top-16 z-20 flex items-center gap-3 rounded-md bg-white/90 px-3 py-1.5 shadow-sm">
             <span className="text-sm text-gray-600">{user.email}</span>
             <button
               type="button"
